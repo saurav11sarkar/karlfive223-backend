@@ -281,11 +281,20 @@ const editCompletedMatchScore = async (
     );
   }
 
+  const editsUsed = existingMatch.scoreEditCount || 0;
+  if (editsUsed >= 2) {
+    throw new AppError(
+      400,
+      "This match's score has already been corrected the maximum number of times (2)."
+    );
+  }
+
   await ensureLeagueOwnerCanManageMatch(existingMatch.league, currentUserId);
 
   const updatePayload: Partial<IMatch> = {
     matchStatus: "completed",
     matchScore: payload.matchScore,
+    scoreEditCount: editsUsed + 1,
   };
 
   if (payload.winnerTeam !== undefined) {
