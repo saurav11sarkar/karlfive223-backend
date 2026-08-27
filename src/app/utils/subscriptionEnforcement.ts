@@ -82,9 +82,14 @@ export const incrementLeaguesCreated = async (userId: string) => {
 };
 
 // ─── Check whether the user can JOIN a new private league ────────────────────
+// ─── Check whether a user can JOIN a private league ───────────────────────
+// `subject` distinguishes the message when this is being checked for the
+// team's co-player rather than the person submitting the application, so
+// the app can tell the user exactly which of the two needs a plan.
 export const enforceJoinLeagueLimit = async (
   userId: string,
-  leagueId: string
+  leagueId: string,
+  subject: 'You' | 'Your co-player' = 'You'
 ) => {
   const league = await League.findById(leagueId);
   if (!league) throw new AppError(404, 'League not found');
@@ -95,11 +100,12 @@ export const enforceJoinLeagueLimit = async (
   if (!user) throw new AppError(404, 'User not found');
 
   const activePlan = await getActiveSubscriptionPlan(userId);
+  const verb = subject === 'You' ? 'need' : 'needs';
 
   if (!activePlan) {
     throw new AppError(
       403,
-      'You need an active subscription to join a private league.'
+      `${subject} ${verb} an active subscription to join a private league.`
     );
   }
 
@@ -112,9 +118,10 @@ export const enforceJoinLeagueLimit = async (
   if (planDetails.maxJoinLeagues === null) return;
 
   if (user.leaguesJoinedCount >= planDetails.maxJoinLeagues) {
+    const possessive = subject === 'You' ? 'Your' : "Your co-player's";
     throw new AppError(
       403,
-      `Your ${activePlan} plan allows joining at most ${planDetails.maxJoinLeagues} private leagues per billing period. Please upgrade your plan.`
+      `${possessive} ${activePlan} plan allows joining at most ${planDetails.maxJoinLeagues} private leagues per billing period. Please upgrade your plan.`
     );
   }
 };
