@@ -4,7 +4,6 @@ import { createAndSendNotifications } from "../../helper/socketHelper";
 import { IOption } from "../../interface";
 import { sendPushNotification } from "../../utils/sendPushNotification";
 import League from "../league/league.model";
-import { Notification } from "../notification/notification.model";
 import { rebuildLeagueStandingsForCompletedMatches } from "../standing/standing.service";
 import Team from "../team/team.model";
 import { IMatch } from "./match.interface";
@@ -151,10 +150,11 @@ const updateMatch = async (
       await sendPushNotification(userIds, "Match Rescheduled", message);
     // Create notifications in DB and send via Socket.IO
     await createAndSendNotifications(
-      userIds, 
-      "Match Rescheduled", 
-      message, 
-      "match"
+      userIds,
+      "Match Rescheduled",
+      message,
+      "match",
+      { entityType: "normalLeague", relatedId: league._id }
     );
   }
 
@@ -212,17 +212,11 @@ const updateMatch = async (
 
       if (allUserIds.length) {
         const uniqueIds = [...new Set(allUserIds.map((id) => id.toString()))];
-        await Notification.insertMany(
-          uniqueIds.map((uid) => ({
-            userId: uid,
-            title: "Match Draw",
-            message,
-            type: "match",
-            read: false,
-          }))
-        );
-
         await sendPushNotification(uniqueIds, "Match Draw", message);
+        await createAndSendNotifications(uniqueIds, "Match Draw", message, "match", {
+          entityType: "normalLeague",
+          relatedId: league._id,
+        });
       }
     } else if (match.winnerTeam) {
       // Send winner notifications
@@ -238,16 +232,11 @@ const updateMatch = async (
       // bulk insert notifications (fast)
       if (winnerUserIds.length) {
         const uniqueIds = [...new Set(winnerUserIds.map((id) => id.toString()))];
-        await Notification.insertMany(
-          uniqueIds.map((uid) => ({
-            userId: uid,
-            title: "Match Won! 🏆",
-            message,
-            type: "success",
-            read: false,
-          }))
-        );
         await sendPushNotification(uniqueIds, "Match Won! 🏆", message);
+        await createAndSendNotifications(uniqueIds, "Match Won! 🏆", message, "success", {
+          entityType: "normalLeague",
+          relatedId: league._id,
+        });
       }
     }
 
@@ -371,7 +360,10 @@ const rescheduleMatch = async (
 
     const message = `📅 Match date updated: ${teamOne.teamName} vs ${teamTwo.teamName} in ${leagueName} has been rescheduled to ${formattedDate}`;
     await sendPushNotification(userIds, "Match Rescheduled", message);
-    await createAndSendNotifications(userIds, "Match Rescheduled", message, "match");
+    await createAndSendNotifications(userIds, "Match Rescheduled", message, "match", {
+      entityType: "normalLeague",
+      relatedId: league._id,
+    });
   }
 
   return match.populate("teamOne teamTwo league matchVenue referee winnerTeam");

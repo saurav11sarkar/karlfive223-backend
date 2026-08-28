@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { Server as SocketIOServer } from "socket.io";
 import { Notification } from "../module/notification/notification.model";
+import { NotificationEntityType } from "../module/notification/notifications.interface";
 
 let io: SocketIOServer | null = null;
 
@@ -129,18 +130,26 @@ export const sendChatMessageToMatch = (
  * @param title - The notification title
  * @param message - The notification message
  * @param type - Notification type (success, error, warning, match, league, event, general)
+ * @param target - What screen this notification should open when tapped —
+ *   entityType identifies which kind of entity relatedId is (a league id,
+ *   an event id, a chat id, ...); omit for notifications with nothing to
+ *   navigate to.
  */
 export const createAndSendNotifications = async (
   userIds: (string | Types.ObjectId)[],
   title: string,
   message: string,
-  type: "success" | "error" | "warning" | "match" | "league" | "event" | "general" = "success"
+  type: "success" | "error" | "warning" | "match" | "league" | "event" | "general" = "success",
+  target?: { entityType: NotificationEntityType; relatedId: string | Types.ObjectId }
 ) => {
   try {
     // Remove duplicates
     const uniqueUserIds = [...new Set(userIds.map((id) => id.toString()))];
 
     if (uniqueUserIds.length === 0) return;
+
+    const entityType = target?.entityType;
+    const relatedId = target?.relatedId?.toString();
 
     // Create notifications in database
     const notifications = await Notification.insertMany(
@@ -150,6 +159,8 @@ export const createAndSendNotifications = async (
         message,
         type,
         read: false,
+        ...(entityType ? { entityType } : {}),
+        ...(relatedId ? { relatedId } : {}),
       }))
     );
 
@@ -158,7 +169,7 @@ export const createAndSendNotifications = async (
       for (const notification of notifications) {
         const notificationData: any = notification.toObject ? notification.toObject() : notification;
         const userIdStr = notification.userId.toString();
-        
+
         // Transform to Flutter's expected format
         const flutterNotification = {
           _id: notificationData._id.toString(),
@@ -167,14 +178,16 @@ export const createAndSendNotifications = async (
           message: notificationData.message,
           type: notificationData.type,
           isViewed: notificationData.read,
+          entityType: notificationData.entityType,
+          relatedId: notificationData.relatedId,
           createdAt: notificationData.createdAt.toISOString(),
           updatedAt: notificationData.updatedAt.toISOString(),
         };
-        
+
         // Emit the new notification event
         io.to(userIdStr).emit("notification", flutterNotification);
         console.log(`📬 Notification sent to ${userIdStr}:`, title);
-        
+
         // Emit updated unread count so badge updates instantly
         const unreadCount = await Notification.countDocuments({ userId: notification.userId, read: false });
         io.to(userIdStr).emit("unreadCount", { unreadCount });

@@ -13,6 +13,7 @@ import sendResponse from "../../utils/sendRespopnse";
 import Match from "../match/match.model";
 import { Chat } from "./chat.model";
 import { sendChatMessageToMatch, createAndSendNotifications } from "../../helper/socketHelper";
+import { sendPushNotification } from "../../utils/sendPushNotification";
 
 export const createChat = catchAsycn(async (req, res) => {
   const { matchId } = req.body;
@@ -158,9 +159,13 @@ export const sendMessage = catchAsycn(async (req, res) => {
       if (allUserIds.length > 0) {
         const notificationTitle = "New Chat Message";
         const notificationMessage = `💬 New message from ${senderName} in ${teamOne.teamName} vs ${teamTwo.teamName} chat`;
-        
+
+        await sendPushNotification(allUserIds.map((id: any) => id.toString()), notificationTitle, notificationMessage);
         // Create notifications in DB and send via Socket.IO
-        await createAndSendNotifications(allUserIds, notificationTitle, notificationMessage, "general");
+        await createAndSendNotifications(allUserIds, notificationTitle, notificationMessage, "general", {
+          entityType: "chat",
+          relatedId: chatId,
+        });
       }
     }
   }

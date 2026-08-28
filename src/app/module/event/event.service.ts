@@ -1,5 +1,6 @@
 import AppError from "../../error/appError";
 import { createAndSendNotifications } from "../../helper/socketHelper";
+import { sendPushNotification } from "../../utils/sendPushNotification";
 import User from "../user/user.model";
 import { EVENT_STATUS } from "./event.constant";
 // import { EVENT_OTP_CONFIG } from "./event.constant"; // Legacy free-trial OTP flow disabled.
@@ -57,12 +58,10 @@ const createEvent = async (
   const managerIds = managers.map((m) => m._id);
 
   if (managerIds.length > 0) {
-    await createAndSendNotifications(
-      managerIds,
-      "New Event Request",
-      `📋 ${user.name} from ${payload.organizationName} has submitted a new event: "${payload.eventName}" for approval.`,
-      "event"
-    );
+    const title = "New Event Request";
+    const message = `📋 ${user.name} from ${payload.organizationName} has submitted a new event: "${payload.eventName}" for approval.`;
+    await sendPushNotification(managerIds.map((id) => id.toString()), title, message);
+    await createAndSendNotifications(managerIds, title, message, "event");
   }
 
   return event;
@@ -157,12 +156,10 @@ const approveEvent = async (eventId: string, managerEmail: string) => {
   // Send notification to event creator about approval
   const creator = event.createdBy as any;
   if (creator && creator._id) {
-    await createAndSendNotifications(
-      [creator._id],
-      "Event Approved! 🎉",
-      `✅ Your event "${event.eventName}" has been approved.`,
-      "success"
-    );
+    const title = "Event Approved! 🎉";
+    const message = `✅ Your event "${event.eventName}" has been approved.`;
+    await sendPushNotification([creator._id.toString()], title, message);
+    await createAndSendNotifications([creator._id], title, message, "success");
   }
 
   return event;
@@ -204,12 +201,10 @@ const declineEvent = async (
   const creator = event.createdBy as any;
   if (creator && creator._id) {
     const reasonText = declineReason ? ` Reason: ${declineReason}` : "";
-    await createAndSendNotifications(
-      [creator._id],
-      "Event Declined",
-      `❌ Your event "${event.eventName}" has been declined.${reasonText}`,
-      "warning"
-    );
+    const title = "Event Declined";
+    const message = `❌ Your event "${event.eventName}" has been declined.${reasonText}`;
+    await sendPushNotification([creator._id.toString()], title, message);
+    await createAndSendNotifications([creator._id], title, message, "warning");
   }
 
   return event;
