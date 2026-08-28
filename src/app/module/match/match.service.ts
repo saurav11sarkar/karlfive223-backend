@@ -304,6 +304,79 @@ const editCompletedMatchScore = async (
   return updateMatch(id, updatePayload, currentUserId);
 };
 
+// --- Reschedule a match's date/time ---
+// Unlike courtNumber (league-owner only, via ensureLeagueOwnerCanManageMatch),
+// the date is something the two teams actually playing the match need to be
+// able to agree on between themselves — so this allows either the league
+// owner *or* any of the four people on the two teams in this specific match,
+// and nobody else in the league.
+const rescheduleMatch = async (
+  id: string,
+  matchDateTime: string,
+  currentUserId?: string
+) => {
+  const match = await Match.findById(id).populate("teamOne teamTwo league");
+  if (!match) return null;
+
+  if (!currentUserId) {
+    throw new AppError(401, "Authentication required to reschedule this match.");
+  }
+
+  const league = match.league as any;
+  const teamOne = match.teamOne as any;
+  const teamTwo = match.teamTwo as any;
+
+  const isOrganizer = league?.user?.toString() === currentUserId.toString();
+  const matchPlayerIds = [teamOne?.user, teamOne?.player, teamTwo?.user, teamTwo?.player]
+    .filter(Boolean)
+    .map((v: any) => v.toString());
+  const isMatchPlayer = matchPlayerIds.includes(currentUserId.toString());
+
+  if (!isOrganizer && !isMatchPlayer) {
+    throw new AppError(
+      403,
+      "Only the players in this match or the league owner can change its date."
+    );
+  }
+
+  const oldDateTime = match.matchDateTime;
+  const newDateTime = new Date(matchDateTime);
+  const dateChanged =
+    !oldDateTime || new Date(oldDateTime).getTime() !== newDateTime.getTime();
+
+  match.matchDateTime = newDateTime as any;
+  await match.save();
+
+  if (dateChanged) {
+    const userIds = [teamOne?.user, teamOne?.player, teamTwo?.user, teamTwo?.player].filter(
+      Boolean
+    );
+    const leagueName = league?.leagueName || "League";
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    const d = newDateTime;
+    const month = monthNames[d.getUTCMonth()];
+    const day = d.getUTCDate();
+    const year = d.getUTCFullYear();
+    let hours = d.getUTCHours();
+    const minutes = d.getUTCMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    const formattedDate = `${month} ${day}, ${year}, ${hours.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")} ${ampm}`;
+
+    const message = `📅 Match date updated: ${teamOne.teamName} vs ${teamTwo.teamName} in ${leagueName} has been rescheduled to ${formattedDate}`;
+    await sendPushNotification(userIds, "Match Rescheduled", message);
+    await createAndSendNotifications(userIds, "Match Rescheduled", message, "match");
+  }
+
+  return match.populate("teamOne teamTwo league matchVenue referee winnerTeam");
+};
+
 // --- Queries ---
 const getAllMatches = async (params: any, options: IOption) => {
   const { page, limit, skip, sortBy, sortOrder } = pagenation(options);
@@ -397,13 +470,14 @@ const getTeamFixturesByLeague = async (teamId: string, leagueId: string) => {
   return fixtures;
 };
 
-export default { 
-  createMatch, 
+export default {
+  createMatch,
   editCompletedMatchScore,
-  updateMatch, 
-  getAllMatches, 
-  getSingleMatch, 
-  deleteMatch, 
+  updateMatch,
+  rescheduleMatch,
+  getAllMatches,
+  getSingleMatch,
+  deleteMatch,
   getPlayerNextMatches,
-  getTeamFixturesByLeague 
+  getTeamFixturesByLeague
 };

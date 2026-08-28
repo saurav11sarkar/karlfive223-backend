@@ -944,6 +944,45 @@ const updateMatch = async (
     .populate("winnerPlayer", "name email");
 };
 
+// Reschedule a match's date/time. Unlike courtNumber (league-owner only),
+// the date is something the two players actually playing the match need to
+// be able to agree on between themselves — so this allows either the league
+// owner *or* either of the two players in this specific match, and nobody
+// else in the league.
+const rescheduleMatch = async (
+  matchId: string,
+  matchDateTime: string,
+  currentUserId: string
+) => {
+  const match = await AmericanoMatch.findById(matchId).populate("league", "user leagueName");
+  if (!match) throw new AppError(404, "Americano match not found");
+
+  const league = match.league as any;
+  const leagueUser = league?.user?.toString?.();
+  const isOrganizer = !!leagueUser && leagueUser === currentUserId.toString();
+  const matchPlayerIds = [match.playerOne, match.playerTwo]
+    .filter(Boolean)
+    .map((v: any) => v.toString());
+  const isMatchPlayer = matchPlayerIds.includes(currentUserId.toString());
+
+  if (!isOrganizer && !isMatchPlayer) {
+    throw new AppError(
+      403,
+      "Only the players in this match or the league owner can change its date."
+    );
+  }
+
+  if (!matchDateTime) throw new AppError(400, "matchDateTime is required");
+
+  match.matchDateTime = new Date(matchDateTime);
+  await match.save();
+
+  return AmericanoMatch.findById(matchId)
+    .populate("playerOne", "name email")
+    .populate("playerTwo", "name email")
+    .populate("winnerPlayer", "name email");
+};
+
 const deleteMatch = async (matchId: string, currentUserId: string) => {
   const match = await AmericanoMatch.findById(matchId).populate("league", "user");
   if (!match) throw new AppError(404, "Americano match not found");
@@ -982,5 +1021,6 @@ export const americanoService = {
   editMatchScore,
   assignCourtNumber,
   updateMatch,
+  rescheduleMatch,
   deleteMatch,
 };
